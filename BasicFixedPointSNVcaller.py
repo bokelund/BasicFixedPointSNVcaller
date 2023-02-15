@@ -6,9 +6,9 @@
 #
 # Author: Carl Maarten Lindqvist  (but build upon script cowritten with Johan Dahlberg)
 #
-# Run example: 
-# python BasicFixedPointSNVcaller.py bamfile_to_call.bam reference_samtools_indexed.fa ListWithPostionsToCheck.vcf phredScoreCutoff mapqCutoff 
-# python BasicFixedPointSNVcaller.py bamfile_to_call.bam reference_samtools_indexed.fa ListWithPostionsToCheck.vcf 13 0 
+# Run example:
+# python BasicFixedPointSNVcaller.py bamfile_to_call.bam reference_samtools_indexed.fa ListWithPostionsToCheck.vcf phredScoreCutoff mapqCutoff
+# python BasicFixedPointSNVcaller.py bamfile_to_call.bam reference_samtools_indexed.fa ListWithPostionsToCheck.vcf 13 0
 
 
 
@@ -43,7 +43,8 @@ NameOfSample = "Sample"
 
 #print str(PhredCutoff) + " " + str(MapqCutoff)
 
-MaxDepthCutoff = 1000000
+#MaxDepthCutoff = 1000000
+MaxDepthCutoff = 100
 
 Bases = ('A','C','G','T')
 
@@ -55,31 +56,57 @@ def getBase(chrom,pos,bamFile):
      startOfRead = defaultdict(int)
      #for pileupColumn in bamFile.pileup(chrom, pos - 2, pos + 2):
      for pileupColumn in bamFile.pileup(chrom, pos - 2, pos + 2,max_depth=MaxDepthCutoff):
+          #print(pileupColumn.pos)
+          #pysam uses a 0-coordinate, hence pos-1
           if(pileupColumn.pos == pos - 1):
+               print("Enter right column")
                for pileupRead in pileupColumn.pileups:
-                    startOfRead[(pileupRead.qpos)] += 1
-                    phreadQual = ord(pileupRead.alignment.qual[pileupRead.qpos]) - 33
-                    #baseCount[pileupRead.alignment.seq[pileupRead.qpos]] += 1
-                    #Rawdepth is reads with MapQ over cutoff (0)
+
+
+                    print(pileupRead.query_position)
+                    #if not pileupread.is_del and not pileupread.is_refskip:
                     if pileupRead.alignment.mapq > MapqCutoff:
-                         baseCount['RawDepth'] += 1
-                    if pileupRead.indel > 0:
-                         baseCount['FlankIns'] += 1
-                    if pileupRead.indel < 0:
-                         baseCount['FlankDel'] += 1
-                    #print str(pileupRead.is_del) + " " + str(pileupRead.alignment.seq[pileupRead.qpos])
-                    if pileupRead.is_del:
-                         baseCount['CoverDel'] += 1
+
+                        baseCount['RawDepth'] += 1
+
+                        if pileupRead.is_del:
+                            baseCount['CoverDel'] += 1
+                        if pileupRead.indel > 0:
+                            baseCount['FlankIns'] += 1
+                        if pileupRead.indel < 0:
+                            baseCount['FlankDel'] += 1
+                        #if  pileupread.is_refskip:
+                        #    baseCount['FlankIns'] += 1
+                        if not pileupRead.is_del and not pileupRead.is_refskip:
+                            startOfRead[(pileupRead.query_position)] += 1
+                            phreadQual = ord(pileupRead.alignment.qual[pileupRead.query_position]) - 33
+                            if phreadQual > PhredCutoff and pileupRead.alignment.mapq > MapqCutoff and pileupRead.alignment.seq[pileupRead.query_position] in Bases:
+                                 baseCount[pileupRead.alignment.seq[pileupRead.query_position]] += 1
+
+
+
+                    #startOfRead[(pileupRead.query_position)] += 1
+                    #phreadQual = ord(pileupRead.alignment.qual[pileupRead.query_position]) - 33
+                    #baseCount[pileupRead.alignment.seq[pileupRead.query_position]] += 1
+                    #Rawdepth is reads with MapQ over cutoff (0)
+
+                    ##if pileupRead.indel > 0:
+                    ##     baseCount['FlankIns'] += 1
+                    ##if pileupRead.indel < 0:
+                    ##     baseCount['FlankDel'] += 1
+                    #print str(pileupRead.is_del) + " " + str(pileupRead.alignment.seq[pileupRead.query_position])
+                    ##if pileupRead.is_del:
+                    ##     baseCount['CoverDel'] += 1
                     #add check that base is ACGT ...
-                    elif phreadQual > PhredCutoff and pileupRead.alignment.mapq > MapqCutoff and pileupRead.alignment.seq[pileupRead.qpos] in Bases:
-                         baseCount[pileupRead.alignment.seq[pileupRead.qpos]] += 1
-                         #print str(pileupRead.alignment.seq[pileupRead.qpos])
+                    ##elif phreadQual > PhredCutoff and pileupRead.alignment.mapq > MapqCutoff and pileupRead.alignment.seq[pileupRead.query_position] in Bases:
+                    ##     baseCount[pileupRead.alignment.seq[pileupRead.query_position]] += 1
+                         #print str(pileupRead.alignment.seq[pileupRead.query_position])
                     #print str(phreadQual) + " " + str(pileupRead.alignment.mapq)
-                    #print pileupRead.alignment.seq[pileupRead.qpos]
+                    #print pileupRead.alignment.seq[pileupRead.query_position]
                     #if pileupRead.is_del:
                          #print "deletion with phred" + "\t" + str(phreadQual)
-                         
-                    
+
+
      return baseCount
 
 # Input files
@@ -97,7 +124,7 @@ print "##this is called with BasicFixedPointSNVcaller.py"
 print "##headers are not commented, otherwise fulfilling the vcf-standard"
 print "CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + NameOfSample +  "\trawdepth\tref_reads\talt_reads\tallele_freq"
 
-for line in vcfFile:                                                                                                                                                                                  
+for line in vcfFile:
      if not (line.startswith('#') or line.startswith('CHROM')):
           chrome = line.split('\t')[0]
           pos  = line.split('\t')[1]
@@ -110,7 +137,10 @@ for line in vcfFile:
                continue
 
           #genotypeInRef =  line.split('\t')[10].strip("\n")
-          refFromFasta = fastaFile.fetch(chrome,pos-1,pos)
+          refFromFastaRAW = fastaFile.fetch(chrome,pos-1,pos)
+          refFromFasta = refFromFastaRAW.upper()
+          print(pos)
+          print("Enter getBase")
           baseCounts = getBase(chrome,pos,samFile)
           if baseCounts == None:
                print "Warning!!!"
@@ -126,9 +156,9 @@ for line in vcfFile:
                          altBase = i
 
 
-          #Print-out for test               
+          #Print-out for test
           #print str(chrome) + "\t" + str(pos)  + "\t" +  str(baseCounts[refFromFasta]) + "\t" + refFromFasta + "\t" + str(altCount)  + "\t" +  altBase + "\t" + str(baseCounts['CoverDel'])  + "\t" + "Cover Deletion"  + "\t" + str(baseCounts['RawDepth']) + "\t" +  "RawDepth" + "\t" +  str(baseCounts['FlankIns']) + "\t" + "Flanking insertion" + "\t" +  str(baseCounts['FlankDel']) + "\t" + "Flanking deletion"
-          
+
           allele_freq = 0
           if baseCounts[refFromFasta] + altCount > 0:
                allele_freq = altCount/(baseCounts[refFromFasta] + altCount)
@@ -142,4 +172,3 @@ for line in vcfFile:
 samFile.close()
 fastaFile.close()
 vcfFile.close()
-
